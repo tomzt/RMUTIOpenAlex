@@ -277,3 +277,66 @@ st.markdown("""
 * **Data-Driven Funding:** นำข้อมูลรายชื่อ "Top 10 ผลงานวิจัยดาวรุ่ง" ที่ได้จากระบบ ไปใช้ประกอบการพิจารณาจัดสรรทุนอุดหนุนการตีพิมพ์ (Page Charge) หรือทำการประชาสัมพันธ์ (PR) เพื่อดันยอดอ้างอิงให้ถึงเกณฑ์กลุ่ม Top 10% ของโลก
 * **EdPex Alignment:** สามารถนำแดชบอร์ดติดตามข้อมูลชุดนี้ ไปผนวกเป็นส่วนหนึ่งของระบบสารสนเทศเพื่อการบริหาร (MIS) เพื่อรองรับการประเมินคุณภาพองค์กรในหมวดที่ 4 (การวัด การวิเคราะห์ และการจัดการความรู้) ได้อย่างเป็นรูปธรรม
 """)
+# =====================================================================
+# 8. ส่วนเพิ่มเติม: เปรียบเทียบคู่แข่ง (Competitor Comparison)
+# =====================================================================
+
+st.markdown("---")
+st.header("📊 เปรียบเทียบสมรรถนะกับสถาบันอื่น (Benchmarking)")
+st.caption("เปรียบเทียบแนวโน้มผลงานวิชาการและการถูกอ้างอิงย้อนหลัง 5 ปี ระหว่าง มทร.อีสาน, ม.อุบลราชธานี และ ม.แม่โจ้")
+
+@st.cache_data
+def fetch_competitor_data():
+    # กำหนดรายชื่อมหาวิทยาลัยและ ROR ID
+    institutions = {
+        "มทร.อีสาน (RMUTI)": "https://ror.org/04a2rz655",
+        "ม.อุบลราชธานี (UBU)": "https://ror.org/045nemn19",
+        "ม.แม่โจ้ (MJU)": "https://ror.org/03c7s1f64"
+    }
+    
+    all_data = []
+    current_year = datetime.now().year
+    
+    for name, ror in institutions.items():
+        url = f"https://api.openalex.org/institutions/{ror}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            if 'counts_by_year' in data:
+                temp_df = pd.DataFrame(data['counts_by_year'])
+                # กรองข้อมูล 5 ปีย้อนหลัง
+                temp_df = temp_df[(temp_df['year'] >= current_year - 6) & (temp_df['year'] < current_year)]
+                temp_df['University'] = name
+                all_data.append(temp_df)
+                
+    if all_data:
+        # นำข้อมูลของทุกมหาวิทยาลัยมารวมกันเป็นตารางเดียว
+        combined_df = pd.concat(all_data, ignore_index=True)
+        combined_df['year'] = combined_df['year'].astype(str)
+        return combined_df.sort_values('year')
+    return pd.DataFrame()
+
+with st.spinner('กำลังดึงข้อมูลเปรียบเทียบจาก OpenAlex...'):
+    comp_df = fetch_competitor_data()
+
+if not comp_df.empty:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📈 เปรียบเทียบยอดการถูกอ้างอิง (Citations)")
+        fig_comp_cite = px.line(comp_df, x='year', y='cited_by_count', color='University', markers=True,
+                                labels={'year': 'ปี ค.ศ.', 'cited_by_count': 'จำนวนการถูกอ้างอิง (ครั้ง)', 'University': 'มหาวิทยาลัย'},
+                                line_shape='spline')
+        fig_comp_cite.update_traces(line_width=3, marker_size=8)
+        # ปรับตำแหน่ง Legend ให้อยู่ด้านบนจะได้ไม่บังพื้นที่กราฟ
+        fig_comp_cite.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_comp_cite, use_container_width=True)
+
+    with col2:
+        st.markdown("### 📝 เปรียบเทียบยอดการตีพิมพ์ผลงาน (Works)")
+        fig_comp_works = px.bar(comp_df, x='year', y='works_count', color='University', barmode='group',
+                                labels={'year': 'ปี ค.ศ.', 'works_count': 'จำนวนผลงาน (ชิ้น)', 'University': 'มหาวิทยาลัย'})
+        fig_comp_works.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_comp_works, use_container_width=True)
+else:
+    st.error("ไม่สามารถดึงข้อมูลเปรียบเทียบได้ในขณะนี้")
